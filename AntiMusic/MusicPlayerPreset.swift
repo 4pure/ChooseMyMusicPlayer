@@ -8,7 +8,8 @@ import Foundation
 enum MusicPlayerPreset: String, CaseIterable {
   case appleMusic
   case netease
-  case qishui
+  /// Personal Swift client with system Now Playing (replaces official 汽水).
+  case sodaPlus
   case qqMusic
   case custom
 
@@ -16,7 +17,7 @@ enum MusicPlayerPreset: String, CaseIterable {
     switch self {
     case .appleMusic: return "音乐"
     case .netease: return "网易云音乐"
-    case .qishui: return "汽水音乐"
+    case .sodaPlus: return "SodaPlus"
     case .qqMusic: return "QQ音乐"
     case .custom: return "自定义"
     }
@@ -24,7 +25,7 @@ enum MusicPlayerPreset: String, CaseIterable {
 
   /// Built-in presets only (excludes `.custom`).
   static var builtIn: [MusicPlayerPreset] {
-    [.appleMusic, .netease, .qishui, .qqMusic]
+    [.appleMusic, .netease, .sodaPlus, .qqMusic]
   }
 
   var candidatePaths: [String] {
@@ -36,11 +37,8 @@ enum MusicPlayerPreset: String, CaseIterable {
         "/Applications/NeteaseMusic.app",
         "/Applications/网易云音乐.app",
       ]
-    case .qishui:
-      return [
-        "/Applications/汽水音乐.app",
-        "/Applications/SodaMusic.app",
-      ]
+    case .sodaPlus:
+      return ["/Applications/SodaPlus.app"]
     case .qqMusic:
       return [
         "/Applications/QQMusic.app",
@@ -71,7 +69,23 @@ enum MusicPlayerPreset: String, CaseIterable {
         }
       }
     }
+    // Legacy: old installs pointed at official 汽水 → treat as SodaPlus preset.
+    let legacyQishui = [
+      "/Applications/汽水音乐.app",
+      "/Applications/SodaMusic.app",
+    ]
+    for candidate in legacyQishui {
+      if (candidate as NSString).standardizingPath == standardized {
+        return .sodaPlus
+      }
+    }
     return nil
+  }
+
+  /// Migrate persisted raw values from older AntiMusic builds.
+  static func fromPersistedRawValue(_ raw: String) -> MusicPlayerPreset? {
+    if raw == "qishui" { return .sodaPlus }
+    return MusicPlayerPreset(rawValue: raw)
   }
 }
 
