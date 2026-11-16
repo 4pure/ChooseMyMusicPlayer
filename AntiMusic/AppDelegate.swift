@@ -30,6 +30,15 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
   // Title is required so headset / media keys route to Remote Command Center.
   private var fakePlayer: [String: Any] = [MPMediaItemPropertyTitle: "<AntiMusic.app>"]
   private var isHoldingNowPlaying = true
+  /// Safety net: reclaim if Now Playing was cleared while we should still intercept.
+  private var nowPlayingWatchdog: Timer?
+  /// Prevent media-command → open/activate feedback loops.
+  private var isHandlingRemoteCommand = false
+  private var lastRemoteCommandAt: Date = .distantPast
+  /// Once the preferred player has owned Now Playing, do not steal the slot back
+  /// while that app stays running (avoids fighting SodaPlus/Netease for headset).
+  private var preferredHasOwnedNowPlaying = false
+  private var pendingForwardWorkItems: [DispatchWorkItem] = []
 
   var ignoreMediaKey = false
   var playerPreset: MusicPlayerPreset = .appleMusic
@@ -48,13 +57,31 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     let commandCenter = MPRemoteCommandCenter.shared()
     commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
       DispatchQueue.main.async {
-        self?.handlePlay(fromControlCenter: false)
+        self?.handleRemoteCommand(.togglePlayPause, fromControlCenter: false)
       }
       return .success
     }
     commandCenter.playCommand.addTarget { [weak self] _ in
       DispatchQueue.main.async {
-        self?.handlePlay(fromControlCenter: true)
+        self?.handleRemoteCommand(.play, fromControlCenter: true)
+      }
+      return .success
+    }
+    commandCenter.pauseCommand.addTarget { [weak self] _ in
+      DispatchQueue.main.async {
+        self?.handleRemoteCommand(.pause, fromControlCenter: true)
+      }
+      return .success
+    }
+    commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+      DispatchQueue.main.async {
+        self?.handleRemoteCommand(.nextTrack, fromControlCenter: false)
+      }
+      return .success
+    }
+    commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+      DispatchQueue.main.async {
+        self?.handleRemoteCommand(.previousTrack, fromControlCenter: false)
       }
       return .success
     }
@@ -71,6 +98,13 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
       object: nil
     )
 
+    NSWorkspace.shared.notificationCenter.addObserver(
+      self,
+      selector: #selector(appDidLaunch(_:)),
+      name: NSWorkspace.didLaunchApplicationNotification,
+      object: nil
+    )
+
     loadPersistedSettings()
     refreshFakePlayerMetadata()
     loadSongInfo()
@@ -82,6 +116,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     let status = StatusItemController()
     status.delegate = self
     statusItemController = status
+
+    // Ensure we own the idle Now Playing slot after launch.
+    reclaimNowPlaying()
+    loadSongInfo()
+    startNowPlayingWatchdog()
   }
 
   public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool)
@@ -177,21 +216,137 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     settingsViewController?.reloadFromDelegate()
   }
 
-  private func handlePlay(fromControlCenter: Bool) {
+  private func handleRemoteCommand(
+    _ command: MediaRemoteCommand,
+    fromControlCenter: Bool
+  ) {
     guard isHoldingNowPlaying else { return }
     if ignoreMediaKey && !fromControlCenter {
       return
     }
-    openPreferredPlayer()
+    // Short debounce only — a 1s lock made headset feel dead right after wake.
+    let now = Date()
+    guard !isHandlingRemoteCommand, now.timeIntervalSince(lastRemoteCommandAt) > 0.35 else {
+      return
+    }
+    lastRemoteCommandAt = now
+    isHandlingRemoteCommand = true
+    forwardCommandToPreferredPlayer(command)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+      self?.isHandlingRemoteCommand = false
+    }
   }
 
   func openPreferredPlayer() {
+    openPreferredPlayer(activates: true)
+  }
+
+  private func openPreferredPlayer(activates: Bool) {
     let path = resolvedPlayerPath()
     let url = URL(fileURLWithPath: path, isDirectory: true)
-    NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) {
-      _, error in
+    let configuration = NSWorkspace.OpenConfiguration()
+    // Media-key path must not steal focus; menu "打开默认播放器" still activates.
+    configuration.activates = activates
+    NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
       if let error {
         NSLog("AntiMusic: failed to open player %@: %@", path, String(describing: error))
+      }
+    }
+  }
+
+  private func preferredPlayerBundleIdentifier() -> String? {
+    let path = resolvedPlayerPath()
+    return Bundle(path: path)?.bundleIdentifier
+  }
+
+  private func forwardCommandToPreferredPlayer(_ command: MediaRemoteCommand) {
+    let path = resolvedPlayerPath()
+    let bundleID = preferredPlayerBundleIdentifier()
+
+    guard let bundleID else {
+      NSLog("AntiMusic: preferred player has no bundle id: %@", path)
+      return
+    }
+
+    let alreadyRunning = isPreferredPlayerRunning()
+
+    // Only launch when needed. Never steal focus if already running.
+    if !alreadyRunning {
+      openPreferredPlayer(activates: false)
+    }
+
+    if bundleID == "com.apple.Music" {
+      sendAppleMusicCommand(command)
+      suppressMusicAppIfNeeded()
+      return
+    }
+
+    // Cold start: SodaPlus needs a moment for bridge + Remote Command Center.
+    // Keep holding Now Playing and retry forward instead of yielding into a dead zone.
+    pendingForwardWorkItems.forEach { $0.cancel() }
+    pendingForwardWorkItems.removeAll()
+    let delays: [TimeInterval] = alreadyRunning ? [0.0, 0.6] : [0.8, 1.8, 3.0]
+    for delay in delays {
+      let work = DispatchWorkItem { [weak self] in
+        guard let self else { return }
+        self.mediaRemote.send(command, toBundleIdentifier: bundleID)
+        self.suppressMusicAppIfNeeded()
+        self.yieldToPreferredPlayerIfRunning()
+      }
+      pendingForwardWorkItems.append(work)
+      DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    if alreadyRunning {
+      preferredHasOwnedNowPlaying = true
+    }
+  }
+
+  private func isPreferredPlayerRunning() -> Bool {
+    guard let bundleID = preferredPlayerBundleIdentifier() else { return false }
+    return !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
+  }
+
+  private func suppressMusicAppIfNeeded() {
+    guard preferredPlayerBundleIdentifier() != "com.apple.Music" else { return }
+    let musicApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music")
+    for app in musicApps where !app.isTerminated {
+      NSLog("AntiMusic: terminating Music.app launched while preferred player is not Music")
+      app.terminate()
+    }
+  }
+
+  @objc private func appDidLaunch(_ notification: Notification) {
+    guard
+      let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+      app.bundleIdentifier == "com.apple.Music"
+    else { return }
+    // Ignore launches that happen while we ourselves are mid-command.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+      self?.suppressMusicAppIfNeeded()
+      self?.yieldToPreferredPlayerIfRunning()
+    }
+  }
+
+  private func sendAppleMusicCommand(_ command: MediaRemoteCommand) {
+    let script: String
+    switch command {
+    case .play:
+      script = "tell application \"Music\" to play"
+    case .pause:
+      script = "tell application \"Music\" to pause"
+    case .togglePlayPause:
+      script = "tell application \"Music\" to playpause"
+    case .nextTrack:
+      script = "tell application \"Music\" to next track"
+    case .previousTrack:
+      script = "tell application \"Music\" to previous track"
+    }
+    var errorInfo: NSDictionary?
+    if let appleScript = NSAppleScript(source: script) {
+      appleScript.executeAndReturnError(&errorInfo)
+      if let errorInfo {
+        NSLog("AntiMusic: Apple Music script failed: %@", String(describing: errorInfo))
       }
     }
   }
@@ -231,7 +386,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
 
   func refreshNowPlaying() {
     guard isHoldingNowPlaying else { return }
-    MPNowPlayingInfoCenter.default().nowPlayingInfo = fakePlayer
+    let infoCenter = MPNowPlayingInfoCenter.default()
+    infoCenter.nowPlayingInfo = fakePlayer
+    // Keep stopped: reporting .playing caused repeated pause/play callbacks.
+    infoCenter.playbackState = .stopped
   }
 
   func writeSettings() {
@@ -246,7 +404,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     customPlayerAppPath = UserDefaults.standard.string(forKey: SettingsKey.customPlayerApp)
 
     if let raw = UserDefaults.standard.string(forKey: SettingsKey.playerPreset),
-      let preset = MusicPlayerPreset(rawValue: raw)
+      let preset = MusicPlayerPreset.fromPersistedRawValue(raw)
     {
       playerPreset = preset
     } else if let legacyPath = UserDefaults.standard.string(forKey: SettingsKey.playerApp) {
@@ -262,17 +420,49 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func loadSongInfo() {
-    mediaRemote.fetchPlaybackOwner { [weak self] isPlaying, pid in
+    yieldToPreferredPlayerIfRunning()
+    suppressMusicAppIfNeeded()
+  }
+
+  /// Yield while the preferred player owns (or recently owned) Now Playing.
+  /// Keep holding only before it has ever claimed a session, so cold headset
+  /// presses still open SodaPlus instead of Music.app.
+  private func yieldToPreferredPlayerIfRunning() {
+    guard let preferredBundle = preferredPlayerBundleIdentifier() else {
+      preferredHasOwnedNowPlaying = false
+      reclaimNowPlaying()
+      return
+    }
+
+    let preferredApps = NSRunningApplication.runningApplications(
+      withBundleIdentifier: preferredBundle
+    )
+    if preferredApps.isEmpty {
+      preferredHasOwnedNowPlaying = false
+      reclaimNowPlaying()
+      return
+    }
+
+    let preferredPIDs = Set(preferredApps.map(\.processIdentifier))
+
+    mediaRemote.fetchPlaybackOwner { [weak self] _, pid in
       guard let self else { return }
-      let myPID = Int32(ProcessInfo.processInfo.processIdentifier)
-      if isPlaying && pid != myPID {
+      if preferredPIDs.contains(pid) {
+        self.preferredHasOwnedNowPlaying = true
         self.relinquishNowPlaying()
         return
       }
 
       self.mediaRemote.currentClientBundleIdentifier { [weak self] clientBundle in
         guard let self else { return }
-        if let clientBundle, clientBundle != self.ownBundleID {
+        if clientBundle == preferredBundle {
+          self.preferredHasOwnedNowPlaying = true
+          self.relinquishNowPlaying()
+          return
+        }
+
+        if self.preferredHasOwnedNowPlaying {
+          // Preferred still running after owning NP — stay out of its way.
           self.relinquishNowPlaying()
         } else {
           self.reclaimNowPlaying()
@@ -281,22 +471,42 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  private func reclaimNowPlayingUnlessPreferredOwnsSession() {
+    yieldToPreferredPlayerIfRunning()
+  }
+
+  private func setRemoteCommandsEnabled(_ enabled: Bool) {
+    let commandCenter = MPRemoteCommandCenter.shared()
+    commandCenter.togglePlayPauseCommand.isEnabled = enabled
+    commandCenter.playCommand.isEnabled = enabled
+    commandCenter.pauseCommand.isEnabled = enabled
+    commandCenter.nextTrackCommand.isEnabled = enabled
+    commandCenter.previousTrackCommand.isEnabled = enabled
+  }
+
   private func relinquishNowPlaying() {
     isHoldingNowPlaying = false
-    let commandCenter = MPRemoteCommandCenter.shared()
     let infoCenter = MPNowPlayingInfoCenter.default()
-    commandCenter.togglePlayPauseCommand.isEnabled = false
-    commandCenter.playCommand.isEnabled = false
+    setRemoteCommandsEnabled(false)
     infoCenter.nowPlayingInfo = nil
     infoCenter.playbackState = .stopped
   }
 
   private func reclaimNowPlaying() {
     isHoldingNowPlaying = true
-    let commandCenter = MPRemoteCommandCenter.shared()
-    commandCenter.togglePlayPauseCommand.isEnabled = true
-    commandCenter.playCommand.isEnabled = true
+    setRemoteCommandsEnabled(true)
     refreshNowPlaying()
+  }
+
+  private func startNowPlayingWatchdog() {
+    nowPlayingWatchdog?.invalidate()
+    let timer = Timer(timeInterval: 5.0, repeats: true) { [weak self] _ in
+      DispatchQueue.main.async {
+        self?.loadSongInfo()
+      }
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    nowPlayingWatchdog = timer
   }
 
   @objc private func interfaceModeChanged(sender: NSNotification) {
