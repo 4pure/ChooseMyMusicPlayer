@@ -1,6 +1,6 @@
 //
 // StatusItemController.swift
-// AntiMusic
+// ChooseMyMusicPlayer
 //
 
 import AppKit
@@ -32,7 +32,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     super.init()
 
     if let button = statusItem.button {
-      button.image = NSImage(systemSymbolName: "music.note", accessibilityDescription: "AntiMusic")
+      button.image = NSImage(
+        systemSymbolName: "music.note", accessibilityDescription: "ChooseMyMusicPlayer")
       button.image?.isTemplate = true
     }
 
@@ -43,6 +44,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
   func reloadMenu() {
     rebuildMenu()
+  }
+
+  /// Screen rect of the status-item button; used to anchor panels/windows.
+  func statusItemScreenRect() -> NSRect? {
+    guard let button = statusItem.button, let buttonWindow = button.window else {
+      return nil
+    }
+    return buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
   }
 
   func menuNeedsUpdate(_ menu: NSMenu) {
@@ -120,7 +129,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     statusMenu.addItem(settingsItem)
 
     let quitItem = NSMenuItem(
-      title: "退出 AntiMusic",
+      title: "退出 ChooseMyMusicPlayer",
       action: #selector(NSApplication.terminate(_:)),
       keyEquivalent: "q"
     )
@@ -140,6 +149,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
   }
 
   @objc private func pickCustomApp(_ sender: NSMenuItem) {
+    // Wait for the status menu to finish dismissing; otherwise the panel
+    // often lands on the wrong screen or at a stale origin.
+    DispatchQueue.main.async { [weak self] in
+      self?.presentCustomAppPicker()
+    }
+  }
+
+  private func presentCustomAppPicker() {
     let panel = NSOpenPanel()
     panel.message = "选择要用于媒体键的音乐播放器应用"
     panel.prompt = "选择"
@@ -150,14 +167,33 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     panel.allowedContentTypes = [.application]
     panel.level = .floating
 
-    guard panel.runModal() == .OK, let url = panel.url else { return }
-    do {
-      let resolved = try URL(resolvingAliasFileAt: url)
-      delegate?.selectCustomPlayer(path: resolved.path)
-    } catch {
-      NSLog(
-        "AntiMusic: failed picking custom app %@: %@", url.absoluteString, String(describing: error)
+    // Prefer the status-item screen so multi-monitor setups don't jump to primary.
+    if let anchor = statusItemScreenRect(),
+      let screen = NSScreen.screens.first(where: { NSMouseInRect(anchor.origin, $0.frame, false) })
+        ?? NSScreen.main
+    {
+      let visible = screen.visibleFrame
+      let size = NSSize(width: 720, height: 480)
+      panel.setFrameOrigin(
+        NSPoint(
+          x: visible.midX - size.width / 2,
+          y: visible.midY - size.height / 2
+        )
       )
+    }
+
+    panel.begin { [weak self] result in
+      guard result == .OK, let url = panel.url else { return }
+      do {
+        let resolved = try URL(resolvingAliasFileAt: url)
+        self?.delegate?.selectCustomPlayer(path: resolved.path)
+      } catch {
+        NSLog(
+          "ChooseMyMusicPlayer: failed picking custom app %@: %@",
+          url.absoluteString,
+          String(describing: error)
+        )
+      }
     }
   }
 
@@ -167,10 +203,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
   }
 
   @objc private func openPreferredPlayer(_ sender: NSMenuItem) {
-    delegate?.openPreferredPlayer()
+    // Defer so activation happens after the menu tears down.
+    DispatchQueue.main.async { [weak self] in
+      self?.delegate?.openPreferredPlayer()
+    }
   }
 
   @objc private func openSettings(_ sender: NSMenuItem) {
-    delegate?.openSettings()
+    // Defer so the settings window can measure the status-item frame after
+    // the menu is gone; opening synchronously often places it wrong.
+    DispatchQueue.main.async { [weak self] in
+      self?.delegate?.openSettings()
+    }
   }
 }
