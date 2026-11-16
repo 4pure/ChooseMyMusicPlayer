@@ -1,6 +1,6 @@
 //
 // ViewController.swift
-// AntiMusic
+// ChooseMyMusicPlayer
 //
 // Created by nift4 on 09.12.2023.
 //
@@ -14,9 +14,11 @@ protocol SettingsViewDelegate: AnyObject {
   var playerPreset: MusicPlayerPreset { get }
   var customPlayerAppPath: String? { get }
   var playerApp: String { get }
+  var hasMediaKeyPermissions: Bool { get }
 
   func applyPlayerPreset(_ preset: MusicPlayerPreset, customPath: String?)
   func setIgnoreMediaKey(_ value: Bool)
+  func requestMediaKeyPermissions()
 }
 
 @MainActor
@@ -33,9 +35,11 @@ public final class ViewController: NSViewController {
     target: nil,
     action: nil
   )
+  private let permissionStatusLabel = NSTextField(labelWithString: "")
+  private let permissionButton = NSButton(title: "获取权限…", target: nil, action: nil)
 
   public override func loadView() {
-    view = NSView(frame: NSRect(x: 0, y: 0, width: 440, height: 168))
+    view = NSView(frame: NSRect(x: 0, y: 0, width: 440, height: 220))
   }
 
   public override func viewDidLoad() {
@@ -48,6 +52,16 @@ public final class ViewController: NSViewController {
     rebuildPlayerPopup()
     pathLabel.stringValue = delegate?.playerApp ?? ""
     ignoreCheckbox.state = (delegate?.ignoreMediaKey == true) ? .on : .off
+    refreshPermissionStatus()
+  }
+
+  private func refreshPermissionStatus() {
+    let granted = delegate?.hasMediaKeyPermissions == true
+    permissionStatusLabel.stringValue =
+      granted
+      ? "权限状态：输入监控与辅助功能已允许"
+      : "权限状态：屏蔽媒体键需要「输入监控」和「辅助功能」"
+    permissionButton.title = granted ? "重新检查权限…" : "获取权限…"
   }
 
   private func buildUI() {
@@ -78,6 +92,18 @@ public final class ViewController: NSViewController {
     ignoreCheckbox.action = #selector(onToggleIgnore(_:))
     view.addSubview(ignoreCheckbox)
 
+    permissionStatusLabel.font = .systemFont(ofSize: 11)
+    permissionStatusLabel.textColor = .secondaryLabelColor
+    permissionStatusLabel.lineBreakMode = .byTruncatingTail
+    permissionStatusLabel.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(permissionStatusLabel)
+
+    permissionButton.bezelStyle = .rounded
+    permissionButton.translatesAutoresizingMaskIntoConstraints = false
+    permissionButton.target = self
+    permissionButton.action = #selector(onPressPermission(_:))
+    view.addSubview(permissionButton)
+
     NSLayoutConstraint.activate([
       playerTitle.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
       playerTitle.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
@@ -98,7 +124,15 @@ public final class ViewController: NSViewController {
       ignoreCheckbox.trailingAnchor.constraint(
         lessThanOrEqualTo: view.trailingAnchor, constant: -20),
       ignoreCheckbox.topAnchor.constraint(equalTo: pathLabel.bottomAnchor, constant: 16),
-      ignoreCheckbox.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -20),
+
+      permissionStatusLabel.leadingAnchor.constraint(equalTo: playerTitle.leadingAnchor),
+      permissionStatusLabel.trailingAnchor.constraint(
+        lessThanOrEqualTo: permissionButton.leadingAnchor, constant: -10),
+      permissionStatusLabel.centerYAnchor.constraint(equalTo: permissionButton.centerYAnchor),
+
+      permissionButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+      permissionButton.topAnchor.constraint(equalTo: ignoreCheckbox.bottomAnchor, constant: 12),
+      permissionButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -20),
     ])
   }
 
@@ -163,7 +197,9 @@ public final class ViewController: NSViewController {
         let resolved = try URL(resolvingAliasFileAt: url)
         self.delegate?.applyPlayerPreset(.custom, customPath: resolved.path)
       } catch {
-        NSLog("AntiMusic: failed parsing URL %@: %@", url.absoluteString, String(describing: error))
+        NSLog(
+          "ChooseMyMusicPlayer: failed parsing URL %@: %@", url.absoluteString,
+          String(describing: error))
         return
       }
 
@@ -174,5 +210,11 @@ public final class ViewController: NSViewController {
   @objc private func onToggleIgnore(_ sender: NSButton) {
     guard !hasOpenPanel else { return }
     delegate?.setIgnoreMediaKey(sender.state == .on)
+  }
+
+  @objc private func onPressPermission(_ sender: NSButton) {
+    guard !hasOpenPanel else { return }
+    delegate?.requestMediaKeyPermissions()
+    refreshPermissionStatus()
   }
 }
