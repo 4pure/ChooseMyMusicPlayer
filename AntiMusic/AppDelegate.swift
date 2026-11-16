@@ -404,7 +404,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     customPlayerAppPath = UserDefaults.standard.string(forKey: SettingsKey.customPlayerApp)
 
     if let raw = UserDefaults.standard.string(forKey: SettingsKey.playerPreset),
-      let preset = MusicPlayerPreset.fromPersistedRawValue(raw)
+      let preset = MusicPlayerPreset(rawValue: raw)
     {
       playerPreset = preset
     } else if let legacyPath = UserDefaults.standard.string(forKey: SettingsKey.playerApp) {

@@ -69,23 +69,7 @@ enum MusicPlayerPreset: String, CaseIterable {
         }
       }
     }
-    // Legacy: old installs pointed at official 汽水 → treat as SodaPlus preset.
-    let legacyQishui = [
-      "/Applications/汽水音乐.app",
-      "/Applications/SodaMusic.app",
-    ]
-    for candidate in legacyQishui {
-      if (candidate as NSString).standardizingPath == standardized {
-        return .sodaPlus
-      }
-    }
     return nil
-  }
-
-  /// Migrate persisted raw values from older AntiMusic builds.
-  static func fromPersistedRawValue(_ raw: String) -> MusicPlayerPreset? {
-    if raw == "qishui" { return .sodaPlus }
-    return MusicPlayerPreset(rawValue: raw)
   }
 }
 
