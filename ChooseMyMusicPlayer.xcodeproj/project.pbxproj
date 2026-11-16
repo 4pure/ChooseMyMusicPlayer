@@ -14,19 +14,21 @@
 		A10000012B90000100E54231 /* MusicPlayerPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000002B90000100E54231 /* MusicPlayerPreset.swift */; };
 		A10000032B90000100E54231 /* MediaRemoteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000022B90000100E54231 /* MediaRemoteService.swift */; };
 		A10000072B90000100E54231 /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000062B90000100E54231 /* StatusItemController.swift */; };
+		A10000092B90000100E54231 /* MediaKeyTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000082B90000100E54231 /* MediaKeyTap.swift */; };
 		C74B66BA2AF1661100F8A72D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C74B66B92AF1661100F8A72D /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		01706C952B24EA8500E54231 /* icon_512x512.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = icon_512x512.png; path = AntiMusic/icon_512x512.png; sourceTree = "<group>"; };
+		01706C952B24EA8500E54231 /* icon_512x512.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = icon_512x512.png; path = ChooseMyMusicPlayer/icon_512x512.png; sourceTree = "<group>"; };
 		01706C972B24EC0D00E54231 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
 		01AC15902B23B6F700920888 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		01AC15922B23C7FA00920888 /* MainMenu.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = MainMenu.xib; sourceTree = "<group>"; };
 		A10000002B90000100E54231 /* MusicPlayerPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerPreset.swift; sourceTree = "<group>"; };
 		A10000022B90000100E54231 /* MediaRemoteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaRemoteService.swift; sourceTree = "<group>"; };
 		A10000062B90000100E54231 /* StatusItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemController.swift; sourceTree = "<group>"; };
+		A10000082B90000100E54231 /* MediaKeyTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaKeyTap.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F607182930A001 /* Version.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Version.xcconfig; sourceTree = "<group>"; };
-		C74B66B32AF1661000F8A72D /* AntiMusic.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AntiMusic.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C74B66B32AF1661000F8A72D /* ChooseMyMusicPlayer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChooseMyMusicPlayer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C74B66B92AF1661100F8A72D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -54,7 +56,7 @@
 			children = (
 				A1B2C3D4E5F607182930A002 /* Config */,
 				01706C952B24EA8500E54231 /* icon_512x512.png */,
-				C74B66B52AF1661000F8A72D /* AntiMusic */,
+				C74B66B52AF1661000F8A72D /* ChooseMyMusicPlayer */,
 				C74B66B42AF1661000F8A72D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -62,31 +64,32 @@
 		C74B66B42AF1661000F8A72D /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C74B66B32AF1661000F8A72D /* AntiMusic.app */,
+				C74B66B32AF1661000F8A72D /* ChooseMyMusicPlayer.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		C74B66B52AF1661000F8A72D /* AntiMusic */ = {
+		C74B66B52AF1661000F8A72D /* ChooseMyMusicPlayer */ = {
 			isa = PBXGroup;
 			children = (
 				C74B66B92AF1661100F8A72D /* Assets.xcassets */,
 				01AC15902B23B6F700920888 /* AppDelegate.swift */,
+				A10000082B90000100E54231 /* MediaKeyTap.swift */,
 				A10000022B90000100E54231 /* MediaRemoteService.swift */,
 				01AC15922B23C7FA00920888 /* MainMenu.xib */,
 				A10000002B90000100E54231 /* MusicPlayerPreset.swift */,
 				A10000062B90000100E54231 /* StatusItemController.swift */,
 				01706C972B24EC0D00E54231 /* ViewController.swift */,
 			);
-			path = AntiMusic;
+			path = ChooseMyMusicPlayer;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		C74B66B22AF1661000F8A72D /* AntiMusic */ = {
+		C74B66B22AF1661000F8A72D /* ChooseMyMusicPlayer */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C74B66C32AF1661100F8A72D /* Build configuration list for PBXNativeTarget "AntiMusic" */;
+			buildConfigurationList = C74B66C32AF1661100F8A72D /* Build configuration list for PBXNativeTarget "ChooseMyMusicPlayer" */;
 			buildPhases = (
 				C74B66AF2AF1661000F8A72D /* Sources */,
 				C74B66B02AF1661000F8A72D /* Frameworks */,
@@ -96,9 +99,9 @@
 			);
 			dependencies = (
 			);
-			name = AntiMusic;
+			name = ChooseMyMusicPlayer;
 			productName = Music;
-			productReference = C74B66B32AF1661000F8A72D /* AntiMusic.app */;
+			productReference = C74B66B32AF1661000F8A72D /* ChooseMyMusicPlayer.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -116,7 +119,7 @@
 					};
 				};
 			};
-			buildConfigurationList = C74B66AE2AF1661000F8A72D /* Build configuration list for PBXProject "AntiMusic" */;
+			buildConfigurationList = C74B66AE2AF1661000F8A72D /* Build configuration list for PBXProject "ChooseMyMusicPlayer" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -129,7 +132,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				C74B66B22AF1661000F8A72D /* AntiMusic */,
+				C74B66B22AF1661000F8A72D /* ChooseMyMusicPlayer */,
 			);
 		};
 /* End PBXProject section */
@@ -153,6 +156,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				01AC15912B23B6F700920888 /* AppDelegate.swift in Sources */,
+				A10000092B90000100E54231 /* MediaKeyTap.swift in Sources */,
 				A10000032B90000100E54231 /* MediaRemoteService.swift in Sources */,
 				A10000012B90000100E54231 /* MusicPlayerPreset.swift in Sources */,
 				A10000072B90000100E54231 /* StatusItemController.swift in Sources */,
@@ -289,7 +293,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = AntiMusic;
+				INFOPLIST_KEY_CFBundleDisplayName = ChooseMyMusicPlayer;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "版权所有 2023 nift4";
 				INFOPLIST_KEY_NSMainNibFile = MainMenu;
@@ -299,7 +303,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = org.nift4.AntiMusic;
+				PRODUCT_BUNDLE_IDENTIFIER = org.nift4.ChooseMyMusicPlayer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -318,7 +322,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = AntiMusic;
+				INFOPLIST_KEY_CFBundleDisplayName = ChooseMyMusicPlayer;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "版权所有 2023 nift4";
 				INFOPLIST_KEY_NSMainNibFile = MainMenu;
@@ -328,7 +332,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = org.nift4.AntiMusic;
+				PRODUCT_BUNDLE_IDENTIFIER = org.nift4.ChooseMyMusicPlayer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -338,7 +342,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		C74B66AE2AF1661000F8A72D /* Build configuration list for PBXProject "AntiMusic" */ = {
+		C74B66AE2AF1661000F8A72D /* Build configuration list for PBXProject "ChooseMyMusicPlayer" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				C74B66C12AF1661100F8A72D /* Debug */,
@@ -347,7 +351,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		C74B66C32AF1661100F8A72D /* Build configuration list for PBXNativeTarget "AntiMusic" */ = {
+		C74B66C32AF1661100F8A72D /* Build configuration list for PBXNativeTarget "ChooseMyMusicPlayer" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				C74B66C42AF1661100F8A72D /* Debug */,

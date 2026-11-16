@@ -1,6 +1,6 @@
 //
 // MediaRemoteService.swift
-// AntiMusic
+// ChooseMyMusicPlayer
 //
 // Detects Now Playing ownership and forwards transport commands to a
 // target player via MediaRemote private APIs.
@@ -26,9 +26,11 @@ final class MediaRemoteService {
     @convention(c) (DispatchQueue, @escaping (ObjCBool) -> Void) -> Void
   private typealias GetPID = @convention(c) (DispatchQueue, @escaping (Int32) -> Void) -> Void
   private typealias CreateClient = @convention(c) (NSNumber?, NSString) -> AnyObject?
-  private typealias SendCommandToClient = @convention(c) (
-    Int32, AnyObject?, AnyObject?, AnyObject?, Int32, Int32, AnyObject?
-  ) -> Void
+  private typealias SendCommandToClient =
+    @convention(c) (
+      Int32, AnyObject?, AnyObject?, AnyObject?, Int32, Int32, AnyObject?
+    ) -> Void
+  private typealias SendCommand = @convention(c) (Int32, AnyObject?) -> Bool
 
   private let getNowPlayingClient: GetNowPlayingClient
   private let getBundleIdentifier: GetBundleIdentifier
@@ -37,6 +39,7 @@ final class MediaRemoteService {
   private let getPID: GetPID
   private let createClient: CreateClient
   private let sendCommandToClient: SendCommandToClient
+  private let sendCommand: SendCommand
   private var infoObservers: [NSObjectProtocol] = []
   /// Keep fabricated MRClient instances alive across async MediaRemote work.
   private var fabricatedClients: [String: AnyObject] = [:]
@@ -50,6 +53,7 @@ final class MediaRemoteService {
     getPID = loaded.getPID
     createClient = loaded.createClient
     sendCommandToClient = loaded.sendCommandToClient
+    sendCommand = loaded.sendCommand
   }
 
   deinit {
@@ -115,15 +119,30 @@ final class MediaRemoteService {
       fabricatedClients[bundleIdentifier] = created
       client = created
     } else {
-      NSLog("AntiMusic: MRNowPlayingClientCreate failed for %@", bundleIdentifier)
+      NSLog("ChooseMyMusicPlayer: MRNowPlayingClientCreate failed for %@", bundleIdentifier)
       return
     }
 
-    // Disable implicit launch so failed targets do not fall through to Music.app.
-    let options: NSDictionary = [
-      "kMRMediaRemoteOptionDisableImplicitAppLaunchBehaviors": true,
-    ]
-    sendCommandToClient(command.rawValue, options, nil, client, 1, 0, nil)
+    // Do not set DisableImplicitAppLaunchBehaviors: Netease (and some others)
+    // ignore play/pause while that option is set. Music.app fallout is handled
+    // by AppDelegate.suppressMusicAppIfNeeded instead.
+    sendCommandToClient(command.rawValue, nil, nil, client, 1, 0, nil)
+  }
+
+  /// Route a command through the system Now Playing path. Use after we have
+  /// relinquished our fake session so the preferred player can receive play/pause.
+  /// When `disableImplicitLaunch` is true, Music.app is less likely to cold-start
+  /// as a side effect of an empty Now Playing slot.
+  @discardableResult
+  func sendGlobal(
+    _ command: MediaRemoteCommand,
+    disableImplicitLaunch: Bool = true
+  ) -> Bool {
+    let options: NSDictionary? =
+      disableImplicitLaunch
+      ? ["kMRMediaRemoteOptionDisableImplicitAppLaunchBehaviors": true]
+      : nil
+    return sendCommand(command.rawValue, options)
   }
 
   private static func loadSymbols() -> (
@@ -133,7 +152,8 @@ final class MediaRemoteService {
     getIsPlaying: GetIsPlaying,
     getPID: GetPID,
     createClient: CreateClient,
-    sendCommandToClient: SendCommandToClient
+    sendCommandToClient: SendCommandToClient,
+    sendCommand: SendCommand
   ) {
     let handle = dlopen(
       "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",
@@ -141,7 +161,7 @@ final class MediaRemoteService {
     )
     func require(_ name: String) -> UnsafeMutableRawPointer {
       guard let pointer = dlsym(handle, name) else {
-        fatalError("AntiMusic: MediaRemote symbol missing: \(name)")
+        fatalError("ChooseMyMusicPlayer: MediaRemote symbol missing: \(name)")
       }
       return pointer
     }
@@ -155,7 +175,8 @@ final class MediaRemoteService {
         require("MRMediaRemoteGetNowPlayingApplicationIsPlaying"), to: GetIsPlaying.self),
       unsafeBitCast(require("MRMediaRemoteGetNowPlayingApplicationPID"), to: GetPID.self),
       unsafeBitCast(require("MRNowPlayingClientCreate"), to: CreateClient.self),
-      unsafeBitCast(require("MRMediaRemoteSendCommandToClient"), to: SendCommandToClient.self)
+      unsafeBitCast(require("MRMediaRemoteSendCommandToClient"), to: SendCommandToClient.self),
+      unsafeBitCast(require("MRMediaRemoteSendCommand"), to: SendCommand.self)
     )
   }
 }
