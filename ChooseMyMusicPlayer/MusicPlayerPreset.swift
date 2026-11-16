@@ -1,6 +1,6 @@
 //
 // MusicPlayerPreset.swift
-// AntiMusic
+// ChooseMyMusicPlayer
 //
 
 import Foundation
@@ -74,8 +74,8 @@ enum MusicPlayerPreset: String, CaseIterable {
 }
 
 enum SettingsKey {
-  static let ignoreMediaKey = "org.nift4.AntiMusic.IgnoreMediaKey"
-  static let playerApp = "org.nift4.AntiMusic.PlayerApp"
-  static let playerPreset = "org.nift4.AntiMusic.PlayerPreset"
-  static let customPlayerApp = "org.nift4.AntiMusic.CustomPlayerApp"
+  static let ignoreMediaKey = "org.nift4.ChooseMyMusicPlayer.IgnoreMediaKey"
+  static let playerApp = "org.nift4.ChooseMyMusicPlayer.PlayerApp"
+  static let playerPreset = "org.nift4.ChooseMyMusicPlayer.PlayerPreset"
+  static let customPlayerApp = "org.nift4.ChooseMyMusicPlayer.CustomPlayerApp"
 }

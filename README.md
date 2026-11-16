@@ -1,6 +1,6 @@
-# AntiMusic
+# ChooseMyMusicPlayer
 
-AntiMusic allows you to change the music player used by "Media keys" and "Now Playing" in Control Center on your Mac. If you are annoyed because your headset keeps opening Apple Music or because you want to use another music player instead of Apple Music when nothing is active, this app is for you!
+ChooseMyMusicPlayer allows you to change the music player used by "Media keys" and "Now Playing" in Control Center on your Mac. If you are annoyed because your headset keeps opening Apple Music or because you want to use another music player instead of Apple Music when nothing is active, this app is for you!
 
 ## Installation
 
@@ -12,9 +12,9 @@ Download, extract and move the .app to `/Applications`, then open it. It adds it
 
 ```bash
 make build-mac                      # 或 ./scripts/package-dmg.sh
-./scripts/package-dmg.sh            # installers/AntiMusic-<VERSION>-universal.dmg
-./scripts/package-dmg.sh arm        # installers/AntiMusic-<VERSION>-arm.dmg
-./scripts/package-dmg.sh intel      # installers/AntiMusic-<VERSION>-intel.dmg
+./scripts/package-dmg.sh            # installers/ChooseMyMusicPlayer-<VERSION>-universal.dmg
+./scripts/package-dmg.sh arm        # installers/ChooseMyMusicPlayer-<VERSION>-arm.dmg
+./scripts/package-dmg.sh intel      # installers/ChooseMyMusicPlayer-<VERSION>-intel.dmg
 ```
 
 ## Features
