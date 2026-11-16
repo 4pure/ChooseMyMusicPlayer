@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-SCHEME="AntiMusic"
-APP_NAME="AntiMusic"
+SCHEME="ChooseMyMusicPlayer"
+APP_NAME="ChooseMyMusicPlayer"
 
 VERSION=$(
   PKG_ROOT="$ROOT" python3 - <<'PY'
@@ -115,6 +115,15 @@ package_one() {
   next_section "xcodebuild Release ${label}"
   rm -rf "$derived" "$stage"
 
+  # Stable local identity keeps TCC (Input Monitoring / Accessibility) across
+  # rebuilds. Ad-hoc "-" changes CDHash every build and forces re-authorization.
+  local sign_identity="${CODE_SIGN_IDENTITY:-}"
+  if [[ -z "${sign_identity}" || "${sign_identity}" == "-" ]]; then
+    bash "${ROOT}/scripts/ensure-local-signing-identity.sh"
+    sign_identity="${CHOOSEMYMUSICPLAYER_SIGN_NAME:-ChooseMyMusicPlayer Local}"
+  fi
+  echo "CODE_SIGN_IDENTITY=${sign_identity}"
+
   xcodebuild \
     -scheme "$SCHEME" \
     -configuration Release \
@@ -122,12 +131,19 @@ package_one() {
     -derivedDataPath "$derived" \
     ARCHS="$archs" \
     ONLY_ACTIVE_ARCH=NO \
-    CODE_SIGN_IDENTITY="-" \
+    CODE_SIGN_IDENTITY="${sign_identity}" \
+    CODE_SIGN_STYLE=Manual \
     CODE_SIGNING_ALLOWED=YES \
+    CODE_SIGNING_REQUIRED=YES \
     build
 
   local app="$derived/Build/Products/Release/${APP_NAME}.app"
   test -d "$app"
+
+  # Ensure the shipped bundle carries the stable identity (xcodebuild sometimes
+  # leaves nested ad-hoc bits depending on project settings).
+  codesign --force --deep --options runtime --sign "${sign_identity}" "$app"
+  codesign --verify --verbose=2 "$app"
 
   local binary
   binary="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
