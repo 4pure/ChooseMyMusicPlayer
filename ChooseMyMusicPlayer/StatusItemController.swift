@@ -17,7 +17,7 @@ protocol StatusItemControllerDelegate: AnyObject {
   func selectCustomPlayer(path: String)
   func setIgnoreMediaKey(_ value: Bool)
   func openPreferredPlayer()
-  func openSettings()
+  func openSettings(nearStatusItemRect: NSRect?)
 }
 
 @MainActor
@@ -26,6 +26,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
   private let statusItem: NSStatusItem
   private let statusMenu = NSMenu()
+  /// Captured while the menu is open; live measurement after dismiss/activation
+  /// policy changes is occasionally wrong on multi-monitor setups.
+  private var cachedStatusItemScreenRect: NSRect?
+  private var pendingAfterMenuClose: (() -> Void)?
 
   override init() {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -46,12 +50,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     rebuildMenu()
   }
 
-  /// Screen rect of the status-item button; used to anchor panels/windows.
+  /// Prefer a live button frame; fall back to the last good frame from menu open.
   func statusItemScreenRect() -> NSRect? {
-    guard let button = statusItem.button, let buttonWindow = button.window else {
-      return nil
+    if let live = measureLiveStatusItemScreenRect() {
+      cachedStatusItemScreenRect = live
+      return live
     }
-    return buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+    return cachedStatusItemScreenRect
+  }
+
+  func menuWillOpen(_ menu: NSMenu) {
+    guard menu == statusMenu else { return }
+    refreshCachedStatusItemScreenRect()
+  }
+
+  func menuDidClose(_ menu: NSMenu) {
+    guard menu == statusMenu else { return }
+    refreshCachedStatusItemScreenRect()
+    let pending = pendingAfterMenuClose
+    pendingAfterMenuClose = nil
+    guard let pending else { return }
+    // Let AppKit finish tearing down the menu window before presenting.
+    DispatchQueue.main.async {
+      pending()
+    }
   }
 
   func menuNeedsUpdate(_ menu: NSMenu) {
@@ -136,6 +158,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     statusMenu.addItem(quitItem)
   }
 
+  private func refreshCachedStatusItemScreenRect() {
+    if let live = measureLiveStatusItemScreenRect() {
+      cachedStatusItemScreenRect = live
+    }
+  }
+
+  private func measureLiveStatusItemScreenRect() -> NSRect? {
+    guard let button = statusItem.button, let buttonWindow = button.window else {
+      return nil
+    }
+    let rect = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+    // During menu teardown / activation-policy flips the button window can
+    // briefly report an empty or off-screen frame — treat those as unusable.
+    guard rect.width > 1, rect.height > 1 else { return nil }
+    let mid = NSPoint(x: rect.midX, y: rect.midY)
+    let onAnyScreen = NSScreen.screens.contains { NSMouseInRect(mid, $0.frame, false) }
+    return onAnyScreen ? rect : nil
+  }
+
+  private func runAfterMenuCloses(_ work: @escaping () -> Void) {
+    pendingAfterMenuClose = work
+  }
+
   @objc private func selectPreset(_ sender: NSMenuItem) {
     guard let raw = sender.representedObject as? String,
       let preset = MusicPlayerPreset(rawValue: raw)
@@ -149,14 +194,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
   }
 
   @objc private func pickCustomApp(_ sender: NSMenuItem) {
-    // Wait for the status menu to finish dismissing; otherwise the panel
-    // often lands on the wrong screen or at a stale origin.
-    DispatchQueue.main.async { [weak self] in
-      self?.presentCustomAppPicker()
+    // Snapshot while the menu (and status-item button) are still laid out.
+    let anchor = statusItemScreenRect()
+    runAfterMenuCloses { [weak self] in
+      self?.presentCustomAppPicker(nearStatusItemRect: anchor)
     }
   }
 
-  private func presentCustomAppPicker() {
+  private func presentCustomAppPicker(nearStatusItemRect anchor: NSRect?) {
     let panel = NSOpenPanel()
     panel.message = "选择要用于媒体键的音乐播放器应用"
     panel.prompt = "选择"
@@ -167,21 +212,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     panel.allowedContentTypes = [.application]
     panel.level = .floating
 
-    // Prefer the status-item screen so multi-monitor setups don't jump to primary.
-    if let anchor = statusItemScreenRect(),
-      let screen = NSScreen.screens.first(where: { NSMouseInRect(anchor.origin, $0.frame, false) })
-        ?? NSScreen.main
-    {
-      let visible = screen.visibleFrame
-      let size = NSSize(width: 720, height: 480)
-      panel.setFrameOrigin(
-        NSPoint(
-          x: visible.midX - size.width / 2,
-          y: visible.midY - size.height / 2
-        )
-      )
-    }
+    let size = NSSize(width: 720, height: 480)
+    let panelFrame = StatusItemLayout.centeredFrame(size: size, near: anchor)
 
+    NSApp.activate(ignoringOtherApps: true)
+    // NSOpenPanel often ignores setFrame before begin and recenters on the
+    // main screen — pin it again once the panel window exists.
     panel.begin { [weak self] result in
       guard result == .OK, let url = panel.url else { return }
       do {
@@ -195,6 +231,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
       }
     }
+    if let panelFrame {
+      panel.setFrame(panelFrame, display: true)
+      DispatchQueue.main.async {
+        panel.setFrame(panelFrame, display: true)
+      }
+    }
   }
 
   @objc private func toggleIgnoreMediaKey(_ sender: NSMenuItem) {
@@ -203,17 +245,52 @@ final class StatusItemController: NSObject, NSMenuDelegate {
   }
 
   @objc private func openPreferredPlayer(_ sender: NSMenuItem) {
-    // Defer so activation happens after the menu tears down.
-    DispatchQueue.main.async { [weak self] in
+    runAfterMenuCloses { [weak self] in
       self?.delegate?.openPreferredPlayer()
     }
   }
 
   @objc private func openSettings(_ sender: NSMenuItem) {
-    // Defer so the settings window can measure the status-item frame after
-    // the menu is gone; opening synchronously often places it wrong.
-    DispatchQueue.main.async { [weak self] in
-      self?.delegate?.openSettings()
+    // Capture before menu teardown / activation-policy change can move the item.
+    let anchor = statusItemScreenRect()
+    runAfterMenuCloses { [weak self] in
+      self?.delegate?.openSettings(nearStatusItemRect: anchor)
     }
+  }
+}
+
+enum StatusItemLayout {
+  /// Screen that best contains the status-item rect (midpoint, then max overlap,
+  /// then mouse location — useful right after a status-item click).
+  static func screen(containing rect: NSRect?) -> NSScreen? {
+    if let rect {
+      let mid = NSPoint(x: rect.midX, y: rect.midY)
+      if let hit = NSScreen.screens.first(where: { NSMouseInRect(mid, $0.frame, false) }) {
+        return hit
+      }
+      if let overlap = NSScreen.screens.max(by: {
+        intersectionArea($0.frame, rect) < intersectionArea($1.frame, rect)
+      }), intersectionArea(overlap.frame, rect) > 0 {
+        return overlap
+      }
+    }
+    let mouse = NSEvent.mouseLocation
+    return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
+  }
+
+  static func centeredFrame(size: NSSize, near rect: NSRect?) -> NSRect? {
+    guard let visible = screen(containing: rect)?.visibleFrame else { return nil }
+    return NSRect(
+      x: visible.midX - size.width / 2,
+      y: visible.midY - size.height / 2,
+      width: size.width,
+      height: size.height
+    )
+  }
+
+  private static func intersectionArea(_ a: NSRect, _ b: NSRect) -> CGFloat {
+    let inter = a.intersection(b)
+    guard !inter.isNull, !inter.isEmpty else { return 0 }
+    return inter.width * inter.height
   }
 }

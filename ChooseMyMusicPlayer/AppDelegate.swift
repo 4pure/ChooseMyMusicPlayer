@@ -110,7 +110,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
   public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool)
     -> Bool
   {
-    openSettings()
+    openSettings(nearStatusItemRect: nil)
     return false
   }
 
@@ -122,41 +122,55 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     settingsVisible = false
   }
 
-  func openSettings() {
+  func openSettings(nearStatusItemRect preferredAnchor: NSRect?) {
+    // Resolve the anchor before flipping activation policy — that transition
+    // can briefly make the live status-item frame unusable.
+    let anchor =
+      preferredAnchor
+      ?? statusItemController?.statusItemScreenRect()
+
     NSApp.setActivationPolicy(.regular)
     NSApp.activate(ignoringOtherApps: true)
-
-    OperationQueue.main.addOperation {
-      NSMenu.setMenuBarVisible(false)
-      OperationQueue.main.addOperation {
-        NSMenu.setMenuBarVisible(true)
-      }
-    }
 
     let controller = ensureSettingsWindow()
     controller.delegate = self
     controller.reloadFromDelegate()
-    if let window = settingsWindowController?.window {
-      if let anchor = statusItemController?.statusItemScreenRect() {
-        positionWindow(window, nearStatusItemRect: anchor)
-      } else {
-        window.center()
+    guard let window = settingsWindowController?.window else { return }
+
+    applyStatusItemAnchor(anchor, to: window)
+    settingsWindowController?.showWindow(nil)
+    window.orderFrontRegardless()
+    settingsVisible = true
+
+    // Accessory → regular apps often need a menu-bar flash to accept key focus,
+    // but hiding the menu bar can shove windows onto another screen. Re-assert
+    // the anchor after the flash settles.
+    OperationQueue.main.addOperation {
+      NSMenu.setMenuBarVisible(false)
+      OperationQueue.main.addOperation {
+        NSMenu.setMenuBarVisible(true)
+        OperationQueue.main.addOperation {
+          self.applyStatusItemAnchor(anchor, to: window)
+        }
       }
     }
-    settingsWindowController?.showWindow(nil)
-    settingsVisible = true
   }
 
   /// Place the settings window under the status item on the same screen.
+  private func applyStatusItemAnchor(_ anchor: NSRect?, to window: NSWindow) {
+    guard let anchor else {
+      window.center()
+      return
+    }
+    positionWindow(window, nearStatusItemRect: anchor)
+  }
+
   private func positionWindow(_ window: NSWindow, nearStatusItemRect anchor: NSRect) {
     var frame = window.frame
     frame.origin.x = anchor.midX - frame.width / 2
     frame.origin.y = anchor.minY - frame.height - 8
 
-    let screen =
-      NSScreen.screens.first { NSMouseInRect(anchor.origin, $0.frame, false) }
-      ?? NSScreen.main
-    if let visible = screen?.visibleFrame {
+    if let visible = StatusItemLayout.screen(containing: anchor)?.visibleFrame {
       frame.origin.x = min(
         max(frame.origin.x, visible.minX + 8),
         visible.maxX - frame.width - 8
@@ -166,7 +180,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         visible.maxY - frame.height - 8
       )
     }
-    window.setFrameOrigin(frame.origin)
+    window.setFrame(frame, display: true)
   }
 
   private func ensureSettingsWindow() -> ViewController {
